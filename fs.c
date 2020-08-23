@@ -1,5 +1,5 @@
 /* TO-DO:
-1. magic number in superblock
+1. replace manual option parsing with getopt()
 2. indirect pointers in inodes
 3. make return values (void or return code) consistent
 4. block and entry iterators for an inode
@@ -703,16 +703,11 @@ void create_disk(const char* path) {
     create_root_dir();
 }
 
-int list_entries(const char* path_str) {
-    int inode_id;
-    if (path_str != NULL) {
-        inode_id = traverse(path_str);
-    } else {
-        inode_id = work_inode_id;
-    }
+int list_entries(const char* path, int all) {
+    int inode_id = (path == NULL ? work_inode_id : traverse(path));
 
     if (!is_dir(inode_id)) {
-        printf("%s: not a directory\n", path_str);
+        printf("%s: not a directory\n", path);
         return -1;
     }
 
@@ -726,8 +721,10 @@ int list_entries(const char* path_str) {
         }
         read_block(block, inode.direct[i]);
         for (struct entry* entry = (struct entry*)block; (void*)entry < (void*)block + BLOCK_SIZE; ++entry) {
-            if (is_correct_inode_id(entry->inode_id) && strcmp(entry->filename, ".") != 0 && strcmp(entry->filename, "..") != 0) {
-                //printf("%d ", entry->inode_id);
+            if (is_correct_inode_id(entry->inode_id)) {
+                if (!all && entry->filename[0] == '.') {
+                    continue;
+                }
                 printf("%s\n", entry->filename);
             }
         }
@@ -744,10 +741,12 @@ void display_help() {
         "* exit                         exit from MiniFS\n"
         "* cd path                      change current directory along path\n"
         "* ls [path]                    list files in current directory or by path\n"
+        "                               options: \n"
+        "                                 --all    don't omit files starting with '.'"
         "* cp [options] src dest        make a copy of src at dest\n"
         "                               options: \n"
-        "                                --from-local    copy a local file to MiniFS\n"
-        "                                --to-local      copy a file from MiniFS to local FS\n"
+        "                                 --from-local    copy a local file to MiniFS\n"
+        "                                 --to-local      copy a file from MiniFS to local FS\n"
         "* rm path                      remove file or directory\n"
         "* mv src dest                  move src to dest\n"
         "* mkdir path                   create a directory\n"
@@ -1089,7 +1088,11 @@ int main(int argc, char** argv) {
         } else if (strcmp(tokens[0], "cd") == 0) {
             check_error(change_dir(tokens[1]));
         } else if (strcmp(tokens[0], "ls") == 0) {
-            check_error(list_entries(tokens[1]));
+            if (tokens[1] != NULL && strcmp(tokens[1], "--all") == 0) {
+                check_error(list_entries(tokens[2], 1));
+            } else {
+                check_error(list_entries(tokens[1], 0));
+            }
         } else if (strcmp(tokens[0], "cp") == 0) {
             if (strcmp(tokens[1], "--from-local") == 0) {
                 check_error(copy_from_local(tokens[2], tokens[3]));
