@@ -3,8 +3,8 @@
 2. indirect pointers in inodes
 3. make return values (void or return code) consistent
 4. block and entry iterators for an inode
-5. add more argument checking, and replace is_correct -> is_allocated / is_dir etc.
 6. timestamps
+7. separate network messaging between data socket and sync socket
 */
 
 #include <stdio.h>
@@ -17,6 +17,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
 #include "globals.h"
 #include "bit_util.h"
@@ -25,10 +28,13 @@
 #include "inode.h"
 #include "interface.h"
 #include "disk_io.h"
+#include "net_io.h"
 
 // just so that their definitions exist
-int disk_fd = 0;
-int work_inode_id = 0;
+int disk_fd = -1;
+int client_fd = -1;
+int work_inode_id = -1;
+int disable_succfail = 0;
 
 int open_disk(const char* disk_path) {
     disk_fd = open(disk_path, O_RDWR);
@@ -78,20 +84,15 @@ void create_disk(const char* path) {
     create_root_dir();
 }
 
-void check_error(int ret_code) {
-    if (ret_code == -1) {
-        puts("error");
-    }
-}
-
 int main(int argc, char** argv) {
-    const char* disk_path = argv[1];
+    const char* disk_path = "disk";
+    const int port = (argc >= 2 ? atoi(argv[1]) : 8080);
+
     if (access(disk_path, R_OK | W_OK) != -1) {
         puts("open existing disk");
         if (open_disk(disk_path) == -1) {
-            puts("exiting");
             close(disk_fd);
-            return 0;
+            exit(1);
         }
     } else {
         puts("create a disk");
@@ -99,56 +100,82 @@ int main(int argc, char** argv) {
     }
     if (disk_fd == -1) {
         puts("error opening/creating fs");
-        return 0;
+        exit(1);
     }
     work_inode_id = ROOT_INODE_ID;
 
-    while (1) {
-        print_work_path();
-        printf("$ ");
-        char buf[512];
-        fgets(buf, sizeof(buf), stdin);
-        if (buf[strlen(buf) - 1] == '\n') {
-            buf[strlen(buf) - 1] = '\0';
-        }
+    int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_fd < 0) {
+        puts("couldn't create socket");
+        exit(1);
+    }
+    if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0) {
+        puts("setsockopt error");
+    }
+    struct sockaddr_in serv_addr, client_addr;
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
+    if (bind(sock_fd, (struct sockaddr*)(&serv_addr), sizeof(serv_addr)) < 0) {
+        puts("bind error");
+        exit(1);
+    }
+    listen(sock_fd, 1);
+
+    int addrlen;
+    client_fd = accept(sock_fd, (struct sockaddr*)(&client_addr), (socklen_t*)(&addrlen));
+    //fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL, 0) | O_NONBLOCK);
+
+    char buf[1024];
+    while (recv_msg(buf) > 0) {
+        //printf("got msg: %s\n", buf);
         char** tokens = split_str(buf, " ");
 
-        if (strcmp(tokens[0], "exit") == 0) {
-            free_tokens(tokens);
-            break;
-        } else if (strcmp(tokens[0], "help") == 0) {
+        if (strcmp(tokens[0], "help") == 0) {
             display_help();
         } else if (strcmp(tokens[0], "pwd") == 0) {
             print_work_path();
-            puts("");
         } else if (strcmp(tokens[0], "cd") == 0) {
-            check_error(change_dir(tokens[1]));
+            change_dir(tokens[1]);
         } else if (strcmp(tokens[0], "ls") == 0) {
             if (tokens[1] != NULL && strcmp(tokens[1], "--all") == 0) {
-                check_error(list_entries(tokens[2], 1));
+                list_entries(tokens[2], 1);
             } else {
-                check_error(list_entries(tokens[1], 0));
+                list_entries(tokens[1], 0);
             }
         } else if (strcmp(tokens[0], "cp") == 0) {
             if (strcmp(tokens[1], "--from-local") == 0) {
-                check_error(copy_from_local(tokens[2], tokens[3]));
+                copy_from_local(tokens[3]);
             } else if (strcmp(tokens[1], "--to-local") == 0) {
-                check_error(copy_to_local(tokens[2], tokens[3]));
+                copy_to_local(tokens[2]);
             } else {
-                check_error(copy(tokens[1], tokens[2]));
+                copy(tokens[1], tokens[2]);
             }
         } else if (strcmp(tokens[0], "rm") == 0) {
-            check_error(remove(tokens[1]));
+            remove(tokens[1]);
         } else if (strcmp(tokens[0], "mv") == 0) {
-            check_error(move(tokens[1], tokens[2]));
+            move(tokens[1], tokens[2]);
+            // int inode_id = traverse("b");
+            // printf("inode_id: %d\n", inode_id);
+            // struct inode inode;
+            // read_inode(&inode, inode_id);
+            // printf("size: %d\n", inode.size);
+            // int block_id = inode.direct[0];
+            // printf("block_id: %d\n", block_id);
+            // char block[BLOCK_SIZE];
+            // read_block(block, block_id);
+            // for (int i = 0; i < 3; ++i) {
+            //     struct entry* entry = (struct entry*)block + i;
+            //     printf("%d %s\n", entry->inode_id, entry->filename);
+            // }
         } else if (strcmp(tokens[0], "mkdir") == 0) {
-            check_error(create_file(tokens[1], DIRECTORY));
+            create_file(tokens[1], DIRECTORY);
         } else if (strcmp(tokens[0], "touch") == 0) {
-            check_error(create_file(tokens[1], REGULAR_FILE));
+            create_file(tokens[1], REGULAR_FILE);
         } else if (strcmp(tokens[0], "cat") == 0) {
-            check_error(print_contents(tokens[1]));
+            print_contents(tokens[1]);
         } else {
-            puts("unknown command; type 'help' for help");
+            send_failure("unknown command; type 'help' for help");
         }
 
         free_tokens(tokens);

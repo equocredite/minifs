@@ -13,9 +13,9 @@ int list_entries(const char* path, int all);
 
 void display_help();
 
-int copy_from_local(const char* src_path, const char* dest_path);
+int copy_from_local(const char* dest_path);
 
-int copy_to_local(const char* src_path, const char* dest_path);
+int copy_to_local(const char* src_path);
 
 int copy(const char* src_path, const char* dest_path);
 

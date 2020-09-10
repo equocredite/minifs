@@ -12,9 +12,8 @@ enum file_type {
 #define N_BLOCKS   128 // the actual data blocks, not including special blocks at the beginning
 #define N_INODES   128
 #define INODE_SIZE 128
-
+#define ROOT_INODE_ID 0
 #define N_DIRECT_PTRS 23
-
 #define FILENAME_LEN 28
 
 // depth can't be more than N_INODES
@@ -36,8 +35,10 @@ enum file_type {
 #define DATA_OFFSET (BLOCK_SIZE * 3 + INODE_SIZE * N_INODES)
 #define MAX_FILE_SIZE (N_DIRECT_PTRS * BLOCK_SIZE) // one actual data block for each direct pointer
 
-#define ROOT_INODE_ID 0
 int disk_fd;
+int client_fd; // returned by accept()
 int work_inode_id;
+// set to 1 when current function was called by another one and should not send success/failure messages
+int disable_succfail;
 
 #endif // GLOBALS_H

@@ -91,8 +91,11 @@ int free_inode(int inode_id) {
     return 0;
 }
 
-void init_dir(struct inode* inode, int inode_id, int parent_inode_id) {
+int init_dir(struct inode* inode, int inode_id, int parent_inode_id) {
     int block_id = allocate_block();
+    if (block_id == -1) {
+        return -1;
+    }
     inode->direct[0] = block_id;
     inode->size      = sizeof(struct entry) * 2; // . and ..
 
@@ -103,6 +106,7 @@ void init_dir(struct inode* inode, int inode_id, int parent_inode_id) {
     entry.inode_id = parent_inode_id;
     strcpy(entry.filename, "..");
     write_data(&entry, sizeof(struct entry), -1);
+    return 0;
 }
 
 int go(int inode_id, const char* filename) {
@@ -301,7 +305,7 @@ int get_ref_count(int inode_id) {
     return inode.ref_count;
 }
 
-void remove_file_from_dir(int dir_inode_id, int file_inode_id) {
+int remove_file_from_dir(int dir_inode_id, int file_inode_id) {
     struct inode dir_inode;
     read_inode(&dir_inode, dir_inode_id);
     char block[BLOCK_SIZE];
@@ -317,19 +321,21 @@ void remove_file_from_dir(int dir_inode_id, int file_inode_id) {
 
                 dir_inode.size -= sizeof(struct entry);
                 write_inode(&dir_inode, dir_inode_id);
-
-                decrement_ref_count(file_inode_id);
-                return;
+                if (entry->filename[0] != '.') {
+                    decrement_ref_count(file_inode_id);
+                }
+                return 0;
             }
         }
     }
+    return -1;
 }
 
 int min(int a, int b) {
     return a < b ? a : b;
 }
 
-void append_to_file(int inode_id, const void* data, int n_bytes) {
+int append_to_file(int inode_id, const void* data, int n_bytes) {
     struct inode inode;
     read_inode(&inode, inode_id);
     int ptr = inode.size / BLOCK_SIZE;
@@ -342,16 +348,22 @@ void append_to_file(int inode_id, const void* data, int n_bytes) {
     }
     for (; bytes_written < n_bytes; ++ptr) {
         inode.direct[ptr] = allocate_block();
+        if (!is_correct_block_id(inode.direct[ptr])) {
+            inode.size += bytes_written;
+            write_inode(&inode, inode_id);
+            return -1;
+        }
         int write_now = min(n_bytes - bytes_written, BLOCK_SIZE);
         write_data(data, write_now, DATA_OFFSET + inode.direct[ptr] * BLOCK_SIZE);
         bytes_written += write_now;
 
     }
-    inode.size += n_bytes;
+    inode.size += bytes_written;
     write_inode(&inode, inode_id);
+    return 0;
 }
 
-void rename_file_in_dir(int dir_inode_id, const char* filename, const char* new_filename) {
+int rename_file_in_dir(int dir_inode_id, const char* filename, const char* new_filename) {
     struct inode dir_inode;
     read_inode(&dir_inode, dir_inode_id);
     char block[BLOCK_SIZE];
@@ -364,13 +376,14 @@ void rename_file_in_dir(int dir_inode_id, const char* filename, const char* new_
             if (strcmp(entry->filename, filename) == 0) {
                 strcpy(entry->filename, new_filename);
                 write_block(block, dir_inode.direct[i]);
-                return;
+                return 0;
             }
         }
     }
+    return -1;
 }
 
-void get_filename_by_inode(int dir_inode_id, int inode_id, char* filename) {
+int get_filename_by_inode(int dir_inode_id, int inode_id, char* filename) {
     struct inode dir_inode;
     read_inode(&dir_inode, dir_inode_id);
     char block[BLOCK_SIZE];
@@ -382,8 +395,9 @@ void get_filename_by_inode(int dir_inode_id, int inode_id, char* filename) {
         for (struct entry* entry = (struct entry*)block; (char*)entry < block + BLOCK_SIZE; ++entry) {
             if (entry->inode_id == inode_id) {
                 strcpy(filename, entry->filename);
-                return;
+                return 0;
             }
         }
     }
+    return -1;
 }

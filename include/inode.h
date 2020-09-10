@@ -42,7 +42,7 @@ int allocate_inode();
 
 int free_inode(int inode_id);
 
-void init_dir(struct inode* inode, int inode_id, int parent_inode_id);
+int init_dir(struct inode* inode, int inode_id, int parent_inode_id);
 
 int go(int inode_id, const char* filename);
 
@@ -76,14 +76,14 @@ void remove_inode(int inode_id);
 
 int get_ref_count(int inode_id);
 
-void remove_file_from_dir(int dir_inode_id, int file_inode_id);
+int remove_file_from_dir(int dir_inode_id, int file_inode_id);
 
 int min(int a, int b);
 
-void append_to_file(int inode_id, const void* data, int n_bytes);
+int append_to_file(int inode_id, const void* data, int n_bytes);
 
-void rename_file_in_dir(int dir_inode_id, const char* filename, const char* new_filename);
+int rename_file_in_dir(int dir_inode_id, const char* filename, const char* new_filename);
 
-void get_filename_by_inode(int dir_inode_id, int inode_id, char* filename);
+int get_filename_by_inode(int dir_inode_id, int inode_id, char* filename);
 
 #endif // INODE_H
