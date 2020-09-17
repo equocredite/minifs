@@ -155,19 +155,6 @@ int main(int argc, char** argv) {
             remove(tokens[1]);
         } else if (strcmp(tokens[0], "mv") == 0) {
             move(tokens[1], tokens[2]);
-            // int inode_id = traverse("b");
-            // printf("inode_id: %d\n", inode_id);
-            // struct inode inode;
-            // read_inode(&inode, inode_id);
-            // printf("size: %d\n", inode.size);
-            // int block_id = inode.direct[0];
-            // printf("block_id: %d\n", block_id);
-            // char block[BLOCK_SIZE];
-            // read_block(block, block_id);
-            // for (int i = 0; i < 3; ++i) {
-            //     struct entry* entry = (struct entry*)block + i;
-            //     printf("%d %s\n", entry->inode_id, entry->filename);
-            // }
         } else if (strcmp(tokens[0], "mkdir") == 0) {
             create_file(tokens[1], DIRECTORY);
         } else if (strcmp(tokens[0], "touch") == 0) {
@@ -175,7 +162,7 @@ int main(int argc, char** argv) {
         } else if (strcmp(tokens[0], "cat") == 0) {
             print_contents(tokens[1]);
         } else {
-            send_failure("unknown command; type 'help' for help");
+            send_failure("unknown command; type 'help' for help\n");
         }
 
         free_tokens(tokens);

@@ -155,7 +155,7 @@ int copy_from_local(const char* src_path) {
     }
 
     send_msg(buf);
-    skip_succfail();
+    skip_succfail(); // sync
     send_nbytes(&src_stat.st_size, sizeof(src_stat.st_size));
 
     if (is_failure()) {
