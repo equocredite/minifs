@@ -36,15 +36,32 @@ int client_fd = -1;
 int work_inode_id = -1;
 int disable_succfail = 0;
 
-int open_disk(const char* disk_path) {
-    disk_fd = open(disk_path, O_RDWR);
-    struct superblock sb;
-    read_superblock(&sb);
-    if (sb.magic != MAGIC) {
-        puts("corrupted disk");
-        return -1;
+FILE* log_fp;
+
+void daemonize() {
+    pid_t pid;
+    if ((pid = fork()) < 0) {
+        exit(1);
+    } else if (pid > 0) {
+        exit(0);
     }
-    return 0;
+    if (setsid() < 0) {
+        exit(1);
+    }
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+    if ((pid = fork()) < 0) {
+        exit(1);
+    } else if (pid > 0) {
+        exit(0);
+    }
+    umask(0);
+}
+
+void log_msg(const char* msg) {
+    fprintf(log_fp, "%s\n", msg);
+    fflush(log_fp);
 }
 
 void create_root_dir() {
@@ -63,7 +80,8 @@ void create_root_dir() {
 void create_disk(const char* path) {
     disk_fd = open(path, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
     if (disk_fd == -1) {
-        return;
+        log_msg("couldn't crate disk");
+        exit(1);
     }
     ftruncate(disk_fd, DISK_SIZE);
 
@@ -84,51 +102,53 @@ void create_disk(const char* path) {
     create_root_dir();
 }
 
-int main(int argc, char** argv) {
-    const char* disk_path = "disk";
-    const int port = (argc >= 2 ? atoi(argv[1]) : 8080);
-
+void open_disk() {
+    const char* disk_path = ".disk";
     if (access(disk_path, R_OK | W_OK) != -1) {
-        puts("open existing disk");
-        if (open_disk(disk_path) == -1) {
+        log_msg("open existing disk");
+        disk_fd = open(disk_path, O_RDWR);
+        if (disk_fd == -1) {
+            log_msg("couldn't open disk");
+            exit(1);
+        }
+        struct superblock sb;
+        read_superblock(&sb);
+        if (sb.magic != MAGIC) {
+            log_msg("corrupted disk");
             close(disk_fd);
             exit(1);
         }
     } else {
-        puts("create a disk");
+        log_msg("creating a new disk");
         create_disk(disk_path);
     }
-    if (disk_fd == -1) {
-        puts("error opening/creating fs");
-        exit(1);
-    }
-    work_inode_id = ROOT_INODE_ID;
+}
 
+int setup_server(int port) {
     int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_fd < 0) {
-        puts("couldn't create socket");
+        log_msg("couldn't create socket");
         exit(1);
     }
     if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0) {
-        puts("setsockopt error");
+        log_msg("setsockopt error");
     }
     struct sockaddr_in serv_addr, client_addr;
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(port);
     serv_addr.sin_addr.s_addr = INADDR_ANY;
     if (bind(sock_fd, (struct sockaddr*)(&serv_addr), sizeof(serv_addr)) < 0) {
-        puts("bind error");
+        log_msg("bind error");
         exit(1);
     }
     listen(sock_fd, 1);
+    return sock_fd;
+}
 
-    int addrlen;
-    client_fd = accept(sock_fd, (struct sockaddr*)(&client_addr), (socklen_t*)(&addrlen));
-    //fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL, 0) | O_NONBLOCK);
-
+void process_client() {
+    work_inode_id = ROOT_INODE_ID;
     char buf[1024];
     while (recv_msg(buf) > 0) {
-        //printf("got msg: %s\n", buf);
         char** tokens = split_str(buf, " ");
 
         if (strcmp(tokens[0], "help") == 0) {
@@ -164,9 +184,18 @@ int main(int argc, char** argv) {
         } else {
             send_failure("unknown command; type 'help' for help\n");
         }
-
         free_tokens(tokens);
     }
+}
 
+int main(int argc, char** argv) {
+    daemonize();
+    log_fp = fopen("log", "w+");
+    open_disk();
+    int sock_fd = setup_server(argc >= 2 ? atoi(argv[1]) : 8080);
+    while (1) {
+        client_fd = accept(sock_fd, NULL, NULL);
+        process_client();
+    }
     close(disk_fd);
 }
