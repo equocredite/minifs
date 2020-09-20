@@ -16,12 +16,12 @@ void write_superblock(const struct superblock* sb) {
 
 void read_block(void* block, int block_id) {
     assert(is_correct_block_id(block_id));
-    read_data(block, BLOCK_SIZE, DATA_OFFSET + BLOCK_SIZE * block_id);
+    read_data(block, MINIFS_BLOCK_SIZE, DATA_OFFSET + MINIFS_BLOCK_SIZE * block_id);
 }
 
 void write_block(const void* block, int block_id) {
     assert(is_correct_block_id(block_id));
-    write_data(block, BLOCK_SIZE, DATA_OFFSET + BLOCK_SIZE * block_id);
+    write_data(block, MINIFS_BLOCK_SIZE, DATA_OFFSET + MINIFS_BLOCK_SIZE * block_id);
 }
 
 int is_correct_block_id(int block_id) {
@@ -72,7 +72,7 @@ int allocate_block() {
     }
     write_block_bitmap(block_bitmap);
 
-    char buf[BLOCK_SIZE];
+    char buf[MINIFS_BLOCK_SIZE];
     memset(buf, -1, sizeof buf);
     write_block(buf, allocated_block_id);
 
@@ -86,19 +86,19 @@ int free_block(int block_id) {
 
     // we don't actually need the whole bitmap like when allocating, just one tiny byte
     char byte;
-    read_data(&byte, 1, BLOCK_SIZE + block_id / 8);
+    read_data(&byte, 1, MINIFS_BLOCK_SIZE + block_id / 8);
     if (is_one(byte, block_id % 8)) {
         // block wasn't allocated
         return -1;
     }
     set_one(&byte, block_id % 8);
-    write_data(&byte, 1, BLOCK_SIZE + block_id / 8);
+    write_data(&byte, 1, MINIFS_BLOCK_SIZE + block_id / 8);
 
     return 0;
 }
 
 int get_n_blocks_needed(int size) {
-    int n_blocks_needed = (size + BLOCK_SIZE - 1) / BLOCK_SIZE; // round up
+    int n_blocks_needed = (size + MINIFS_BLOCK_SIZE - 1) / MINIFS_BLOCK_SIZE; // round up
                                 // need an additional indirection level
     return n_blocks_needed/* + (int)(n_blocks_needed > N_DIRECT_PTRS)*/;
 }

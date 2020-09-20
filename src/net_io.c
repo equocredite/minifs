@@ -33,13 +33,13 @@ int recv_nbytes(void* buf, int n) {
 }
 
 // to-do: fix this shit
-int recv_msg(char buf[BLOCK_SIZE]) {
-    memset(buf, 0, BLOCK_SIZE);
-    int bytes_read = recv(client_fd, buf, BLOCK_SIZE - 1, 0);
+int recv_msg(char buf[MINIFS_BLOCK_SIZE]) {
+    memset(buf, 0, MINIFS_BLOCK_SIZE);
+    int bytes_read = recv(client_fd, buf, MINIFS_BLOCK_SIZE - 1, 0);
     return bytes_read;
 }
 
 void discard_msg() {
-    char buf[BLOCK_SIZE];
+    char buf[MINIFS_BLOCK_SIZE];
     while (recv_msg(buf) > 0) {};
 }

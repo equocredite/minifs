@@ -10,7 +10,7 @@
 
 int get_inode_offset(int inode_id) {
     assert(is_correct_inode_id(inode_id));
-    return BLOCK_SIZE * 3 + sizeof(struct inode) * inode_id;
+    return MINIFS_BLOCK_SIZE * 3 + sizeof(struct inode) * inode_id;
 }
 
 int is_correct_inode_id(int inode_id) {
@@ -22,7 +22,7 @@ int is_allocated_inode_id(int inode_id) {
         return 0;
     }
     char byte;
-    read_data(&byte, 1, BLOCK_SIZE * 2 + inode_id / 8);
+    read_data(&byte, 1, MINIFS_BLOCK_SIZE * 2 + inode_id / 8);
     return !is_one(byte, inode_id % 8);
 }
 
@@ -81,12 +81,12 @@ int free_inode(int inode_id) {
     }
 
     char byte;
-    read_data(&byte, 1, BLOCK_SIZE * 2 + inode_id / 8);
+    read_data(&byte, 1, MINIFS_BLOCK_SIZE * 2 + inode_id / 8);
     if (is_one(byte, inode_id % 8)) {
         return -1;
     }
     set_one(&byte, inode_id % 8);
-    write_data(&byte, 1, BLOCK_SIZE * 2 + inode_id / 8);
+    write_data(&byte, 1, MINIFS_BLOCK_SIZE * 2 + inode_id / 8);
 
     return 0;
 }
@@ -102,10 +102,10 @@ int init_dir(struct inode* inode, int inode_id, int parent_inode_id) {
     struct entry entry;
     entry.inode_id = inode_id;
     strcpy(entry.filename, ".");
-    write_data(&entry, sizeof(struct entry), DATA_OFFSET + BLOCK_SIZE * block_id);
+    write_data(&entry, sizeof(struct entry), DATA_OFFSET + MINIFS_BLOCK_SIZE * block_id);
     entry.inode_id = parent_inode_id;
     strcpy(entry.filename, "..");
-    write_data(&entry, sizeof(struct entry), -1);
+    write_data(&entry, sizeof(struct entry), DATA_OFFSET + MINIFS_BLOCK_SIZE * block_id + sizeof(struct entry));
     return 0;
 }
 
@@ -116,14 +116,14 @@ int go(int inode_id, const char* filename) {
 
     struct inode inode;
     read_inode(&inode, inode_id);
-    char block[BLOCK_SIZE];
+    char block[MINIFS_BLOCK_SIZE];
 
     for (int i = 0; i < N_DIRECT_PTRS; ++i) {
         if (!is_correct_block_id(inode.direct[i])) {
             continue;
         }
         read_block(block, inode.direct[i]);
-        for (struct entry* entry = (struct entry*)block; (void*)entry < (void*)block + BLOCK_SIZE; ++entry) {
+        for (struct entry* entry = (struct entry*)block; (void*)entry < (void*)block + MINIFS_BLOCK_SIZE; ++entry) {
             if (strcmp(entry->filename, filename) == 0) {
                 return entry->inode_id;
             }
@@ -232,14 +232,14 @@ int add_file_to_dir(int dir_inode_id, int file_inode_id, const char* filename) {
     struct inode dir_inode;
     read_inode(&dir_inode, dir_inode_id);
 
-    char block[BLOCK_SIZE];
+    char block[MINIFS_BLOCK_SIZE];
     // search for an unoccupied space for the new entry
     for (int i = 0; i < N_DIRECT_PTRS; ++i) {
         if (!is_correct_block_id(dir_inode.direct[i])) {
             dir_inode.direct[i] = allocate_block();
         }
         read_block(block, dir_inode.direct[i]);
-        for (struct entry* entry = (struct entry*)block; (void*)entry < (void*)block + BLOCK_SIZE; ++entry) {
+        for (struct entry* entry = (struct entry*)block; (void*)entry < (void*)block + MINIFS_BLOCK_SIZE; ++entry) {
             if (!is_correct_inode_id(entry->inode_id)) {
                 *entry = new_entry;
                 write_block(block, dir_inode.direct[i]);
@@ -271,14 +271,14 @@ void remove_inode(int);
 void remove_inode_dir(int inode_id) {
     struct inode inode;
     read_inode(&inode, inode_id);
-    char block[BLOCK_SIZE];
+    char block[MINIFS_BLOCK_SIZE];
 
     for (int i = 0; i < N_DIRECT_PTRS; ++i) {
         if (!is_correct_block_id(inode.direct[i])) {
             break;
         }
         read_block(block, inode.direct[i]);
-        for (struct entry* entry = (struct entry*)block; (char*)entry < block + BLOCK_SIZE; ++entry) {
+        for (struct entry* entry = (struct entry*)block; (char*)entry < block + MINIFS_BLOCK_SIZE; ++entry) {
             if (strcmp(entry->filename, ".") == 0 || strcmp(entry->filename, "..") == 0) {
                 continue;
             }
@@ -308,13 +308,13 @@ int get_ref_count(int inode_id) {
 int remove_file_from_dir(int dir_inode_id, int file_inode_id) {
     struct inode dir_inode;
     read_inode(&dir_inode, dir_inode_id);
-    char block[BLOCK_SIZE];
+    char block[MINIFS_BLOCK_SIZE];
     for (int i = 0; i < N_DIRECT_PTRS; ++i) {
         if (!is_correct_block_id(dir_inode.direct[i])) {
             continue;
         }
         read_block(block, dir_inode.direct[i]);
-        for (struct entry* entry = (struct entry*)block; (char*)entry < block + BLOCK_SIZE; ++entry) {
+        for (struct entry* entry = (struct entry*)block; (char*)entry < block + MINIFS_BLOCK_SIZE; ++entry) {
             if (entry->inode_id == file_inode_id) {
                 entry->inode_id = -1;
                 write_block(block, dir_inode.direct[i]);
@@ -338,11 +338,11 @@ int min(int a, int b) {
 int append_to_file(int inode_id, const void* data, int n_bytes) {
     struct inode inode;
     read_inode(&inode, inode_id);
-    int ptr = inode.size / BLOCK_SIZE;
+    int ptr = inode.size / MINIFS_BLOCK_SIZE;
     int bytes_written = 0;
-    if (inode.size % BLOCK_SIZE != 0) {
-        int write_now = min(n_bytes, BLOCK_SIZE - (inode.size % BLOCK_SIZE));
-        write_data(data, write_now, DATA_OFFSET + inode.direct[ptr] * BLOCK_SIZE + (inode.size % BLOCK_SIZE));
+    if (inode.size % MINIFS_BLOCK_SIZE != 0) {
+        int write_now = min(n_bytes, MINIFS_BLOCK_SIZE - (inode.size % MINIFS_BLOCK_SIZE));
+        write_data(data, write_now, DATA_OFFSET + inode.direct[ptr] * MINIFS_BLOCK_SIZE + (inode.size % MINIFS_BLOCK_SIZE));
         bytes_written += write_now;
         ++ptr;
     }
@@ -353,8 +353,8 @@ int append_to_file(int inode_id, const void* data, int n_bytes) {
             write_inode(&inode, inode_id);
             return -1;
         }
-        int write_now = min(n_bytes - bytes_written, BLOCK_SIZE);
-        write_data(data, write_now, DATA_OFFSET + inode.direct[ptr] * BLOCK_SIZE);
+        int write_now = min(n_bytes - bytes_written, MINIFS_BLOCK_SIZE);
+        write_data(data, write_now, DATA_OFFSET + inode.direct[ptr] * MINIFS_BLOCK_SIZE);
         bytes_written += write_now;
 
     }
@@ -366,13 +366,13 @@ int append_to_file(int inode_id, const void* data, int n_bytes) {
 int rename_file_in_dir(int dir_inode_id, const char* filename, const char* new_filename) {
     struct inode dir_inode;
     read_inode(&dir_inode, dir_inode_id);
-    char block[BLOCK_SIZE];
+    char block[MINIFS_BLOCK_SIZE];
     for (int i = 0; i < N_DIRECT_PTRS; ++i) {
         if (!is_correct_block_id(dir_inode.direct[i])) {
             continue;
         }
         read_block(block, dir_inode.direct[i]);
-        for (struct entry* entry = (struct entry*)block; (char*)entry < block + BLOCK_SIZE; ++entry) {
+        for (struct entry* entry = (struct entry*)block; (char*)entry < block + MINIFS_BLOCK_SIZE; ++entry) {
             if (strcmp(entry->filename, filename) == 0) {
                 strcpy(entry->filename, new_filename);
                 write_block(block, dir_inode.direct[i]);
@@ -386,13 +386,13 @@ int rename_file_in_dir(int dir_inode_id, const char* filename, const char* new_f
 int get_filename_by_inode(int dir_inode_id, int inode_id, char* filename) {
     struct inode dir_inode;
     read_inode(&dir_inode, dir_inode_id);
-    char block[BLOCK_SIZE];
+    char block[MINIFS_BLOCK_SIZE];
     for (int i = 0; i < N_DIRECT_PTRS; ++i) {
         if (!is_correct_block_id(dir_inode.direct[i])) {
             continue;
         }
         read_block(block, dir_inode.direct[i]);
-        for (struct entry* entry = (struct entry*)block; (char*)entry < block + BLOCK_SIZE; ++entry) {
+        for (struct entry* entry = (struct entry*)block; (char*)entry < block + MINIFS_BLOCK_SIZE; ++entry) {
             if (entry->inode_id == inode_id) {
                 strcpy(filename, entry->filename);
                 return 0;

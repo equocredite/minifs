@@ -16,7 +16,7 @@
 #include "str_util.h"
 
 int con_fd;
-char buf[BLOCK_SIZE];
+char buf[MINIFS_BLOCK_SIZE];
 char work_path[MAX_PATH_LEN];
 
 void create_connection(const char* ip, int port) {
@@ -165,9 +165,9 @@ int copy_from_local(const char* src_path) {
     }
 
     FILE* src_fp = fdopen(src_fd, "r");
-    char buf[BLOCK_SIZE + 1];
-    for (int n_bytes_left = src_stat.st_size; n_bytes_left > 0; n_bytes_left -= BLOCK_SIZE) {
-        int n_bytes_cur = (n_bytes_left < BLOCK_SIZE ? n_bytes_left : BLOCK_SIZE);
+    char buf[MINIFS_BLOCK_SIZE + 1];
+    for (int n_bytes_left = src_stat.st_size; n_bytes_left > 0; n_bytes_left -= MINIFS_BLOCK_SIZE) {
+        int n_bytes_cur = (n_bytes_left < MINIFS_BLOCK_SIZE ? n_bytes_left : MINIFS_BLOCK_SIZE);
         fread(buf, 1, n_bytes_cur, src_fp);
         buf[n_bytes_cur] = '\0';
         send_nbytes(buf, n_bytes_cur);

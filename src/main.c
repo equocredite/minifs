@@ -80,17 +80,15 @@ void create_root_dir() {
 void create_disk(const char* path) {
     disk_fd = open(path, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
     if (disk_fd == -1) {
-        log_msg("couldn't crate disk");
+        log_msg("couldn't create disk");
         exit(1);
     }
-    ftruncate(disk_fd, DISK_SIZE);
 
     // initialize disk with -1's
-    char buf[BLOCK_SIZE];
+    char buf[MINIFS_BLOCK_SIZE];
     memset(buf, -1, sizeof(buf));
-    lseek(disk_fd, 0, SEEK_SET);
-    for (int i = 0; i * BLOCK_SIZE < DISK_SIZE; ++i) {
-        write_data(buf, BLOCK_SIZE, -1);
+    for (int i = 0; i * MINIFS_BLOCK_SIZE < DISK_SIZE; ++i) {
+        write_data(buf, MINIFS_BLOCK_SIZE, MINIFS_BLOCK_SIZE * i);
     }
 
     struct superblock sb = {
@@ -100,28 +98,6 @@ void create_disk(const char* path) {
     };
     write_superblock(&sb);
     create_root_dir();
-}
-
-void open_disk() {
-    const char* disk_path = ".disk";
-    if (access(disk_path, R_OK | W_OK) != -1) {
-        log_msg("open existing disk");
-        disk_fd = open(disk_path, O_RDWR);
-        if (disk_fd == -1) {
-            log_msg("couldn't open disk");
-            exit(1);
-        }
-        struct superblock sb;
-        read_superblock(&sb);
-        if (sb.magic != MAGIC) {
-            log_msg("corrupted disk");
-            close(disk_fd);
-            exit(1);
-        }
-    } else {
-        log_msg("creating a new disk");
-        create_disk(disk_path);
-    }
 }
 
 int setup_server(int port) {
@@ -191,7 +167,7 @@ void process_client() {
 int main(int argc, char** argv) {
     daemonize();
     log_fp = fopen("log", "w+");
-    open_disk();
+    create_disk("/dev/minifs");
     int sock_fd = setup_server(argc >= 2 ? atoi(argv[1]) : 8080);
     while (1) {
         client_fd = accept(sock_fd, NULL, NULL);

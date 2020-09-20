@@ -8,10 +8,10 @@ enum file_type {
     DIRECTORY
 };
 
-#define BLOCK_SIZE 1024
+#define MINIFS_BLOCK_SIZE 1024
 #define N_BLOCKS   128 // the actual data blocks, not including special blocks at the beginning
 #define N_INODES   128
-#define INODE_SIZE 128
+#define MINIFS_INODE_SIZE 128
 #define ROOT_INODE_ID 0
 #define N_DIRECT_PTRS 23
 #define FILENAME_LEN 28
@@ -23,17 +23,17 @@ enum file_type {
 // plus a symbol for null terminator and plus two just in case :)
 #define MAX_PATH_LEN ((N_INODES - 1) * FILENAME_LEN + N_INODES + 3)
 
-#define DISK_SIZE (BLOCK_SIZE * 3 + N_INODES * INODE_SIZE + BLOCK_SIZE * N_BLOCKS)
+#define DISK_SIZE (MINIFS_BLOCK_SIZE * 3 + N_INODES * MINIFS_INODE_SIZE + MINIFS_BLOCK_SIZE * N_BLOCKS)
 
 
 
-// #define DISK_SIZE           BLOCK_SIZE \                      // superblock
-//                           + BLOCK_SIZE \                    // block bitmap (with padding to a whole block)
-//                           + BLOCK_SIZE                      // inode bitmap (with padding to a whole block)
-//                           + N_INODES * INODE_SIZE // inode table (an integral number of blocks)
-//                           + BLOCK_SIZE * N_BLOCKS;          // data blocks
-#define DATA_OFFSET (BLOCK_SIZE * 3 + INODE_SIZE * N_INODES)
-#define MAX_FILE_SIZE (N_DIRECT_PTRS * BLOCK_SIZE) // one actual data block for each direct pointer
+// #define DISK_SIZE           MINIFS_BLOCK_SIZE \                      // superblock
+//                           + MINIFS_BLOCK_SIZE \                    // block bitmap (with padding to a whole block)
+//                           + MINIFS_BLOCK_SIZE                      // inode bitmap (with padding to a whole block)
+//                           + N_INODES * MINIFS_INODE_SIZE // inode table (an integral number of blocks)
+//                           + MINIFS_BLOCK_SIZE * N_BLOCKS;          // data blocks
+#define DATA_OFFSET (MINIFS_BLOCK_SIZE * 3 + MINIFS_INODE_SIZE * N_INODES)
+#define MAX_FILE_SIZE (N_DIRECT_PTRS * MINIFS_BLOCK_SIZE) // one actual data block for each direct pointer
 
 int disk_fd;
 int client_fd; // returned by accept()
