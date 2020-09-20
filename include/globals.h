@@ -13,7 +13,7 @@ enum file_type {
 #define N_INODES   128
 #define MINIFS_INODE_SIZE 128
 #define ROOT_INODE_ID 0
-#define N_DIRECT_PTRS 23
+#define N_DIRECT_PTRS 22
 #define FILENAME_LEN 28
 
 // depth can't be more than N_INODES
@@ -36,9 +36,10 @@ enum file_type {
 #define MAX_FILE_SIZE (N_DIRECT_PTRS * MINIFS_BLOCK_SIZE) // one actual data block for each direct pointer
 
 int disk_fd;
-int client_fd; // returned by accept()
-int work_inode_id;
 // set to 1 when current function was called by another one and should not send success/failure messages
 int disable_succfail;
+extern _Thread_local int client_fd; // returned by accept()
+extern _Thread_local int work_inode_id;
+extern _Thread_local int user_id;
 
 #endif // GLOBALS_H

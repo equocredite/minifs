@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <time.h>
+#include <signal.h>
 
 #include "globals.h"
 #include "str_util.h"
@@ -198,11 +199,47 @@ int copy_to_local(const char* dest_path) {
     return 0;
 }
 
+void get_user_id() {
+    while (1) {
+        printf("user id: ");
+        get_cmd();
+        if (atoi(buf) <= 0) {
+            puts("invalid id");
+            continue;
+        }
+        return;
+    }
+}
+
+void handle_sigint(int signum) {
+    if (con_fd != -1) {
+        send_msg("exit");
+    }
+    puts("");
+    exit(0);
+}
+
+void setup_handler(int signum, struct sigaction* action, void handle(int)) {
+    memset(action, 0, sizeof(struct sigaction));
+    action->sa_handler = handle;
+    action->sa_flags = SA_RESTART;
+    sigaction(signum, action, NULL);
+}
+
 int main(int argc, char** argv) {
+    con_fd = -1;
+    struct sigaction action_int;
+    setup_handler(SIGINT, &action_int, handle_sigint);
+
     const char* ip = (argc >= 2 ? argv[1] : "127.0.0.1");
     const int port = (argc >= 3 ? atoi(argv[2]) : 8080);
+
+    get_user_id();
     create_connection(ip, port);
     strcpy(work_path, "/");
+    send_msg(buf); // user id
+    skip_succfail();
+
     while (1) {
         print_prompt();
         get_cmd();

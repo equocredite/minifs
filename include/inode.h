@@ -7,6 +7,7 @@
 struct inode {
     enum file_type file_type;
     int            size;
+    int            user_id;
     int            ref_count;
     int            direct[N_DIRECT_PTRS];
     //int            indirect;
@@ -43,6 +44,8 @@ int allocate_inode();
 int free_inode(int inode_id);
 
 int init_dir(struct inode* inode, int inode_id, int parent_inode_id);
+
+int check_inode_id(int inode_id);
 
 int go(int inode_id, const char* filename);
 

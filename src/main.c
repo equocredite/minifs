@@ -5,6 +5,7 @@
 4. block and entry iterators for an inode
 6. timestamps
 7. separate network messaging between data socket and sync socket
+8. wait for epoll notification instead of spinning
 */
 
 #include <stdio.h>
@@ -20,6 +21,7 @@
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <pthread.h>
 
 #include "globals.h"
 #include "bit_util.h"
@@ -30,11 +32,11 @@
 #include "disk_io.h"
 #include "net_io.h"
 
-// just so that their definitions exist
-int disk_fd = -1;
-int client_fd = -1;
-int work_inode_id = -1;
+int disk_fd;
 int disable_succfail = 0;
+_Thread_local int client_fd;
+_Thread_local int work_inode_id;
+_Thread_local int user_id;
 
 FILE* log_fp;
 
@@ -71,6 +73,7 @@ void create_root_dir() {
     inode.created       =
     inode.last_accessed =
     inode.last_modified = time(NULL);
+    inode.user_id       = 0;
     memset(inode.direct, -1, sizeof(inode.direct));
     allocate_inode(); // will return 0
     init_dir(&inode, 0, 0);
@@ -121,13 +124,24 @@ int setup_server(int port) {
     return sock_fd;
 }
 
-void process_client() {
+void* process_client(void* new_client_fd) {
+    client_fd = *((int*)(new_client_fd));
+    free((int*)new_client_fd);
     work_inode_id = ROOT_INODE_ID;
+
     char buf[1024];
+    // log in
+    recv_msg(buf);
+    user_id = atoi(buf);
+    send_success();
+
     while (recv_msg(buf) > 0) {
         char** tokens = split_str(buf, " ");
 
-        if (strcmp(tokens[0], "help") == 0) {
+        if (strcmp(tokens[0], "exit") == 0) {
+            free_tokens(tokens);
+            return NULL;
+        } else if (strcmp(tokens[0], "help") == 0) {
             display_help();
         } else if (strcmp(tokens[0], "pwd") == 0) {
             print_work_path();
@@ -162,6 +176,7 @@ void process_client() {
         }
         free_tokens(tokens);
     }
+    return NULL;
 }
 
 int main(int argc, char** argv) {
@@ -170,8 +185,10 @@ int main(int argc, char** argv) {
     create_disk("/dev/minifs");
     int sock_fd = setup_server(argc >= 2 ? atoi(argv[1]) : 8080);
     while (1) {
-        client_fd = accept(sock_fd, NULL, NULL);
-        process_client();
+        int* new_client_fd = malloc(sizeof(int));
+        *new_client_fd = accept(sock_fd, NULL, NULL);
+        pthread_t thread;
+        pthread_create(&thread, NULL, process_client, new_client_fd);
     }
     close(disk_fd);
 }

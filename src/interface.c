@@ -24,7 +24,7 @@ int change_dir(const char* path) {
 
         return work_inode_id;
     } else {
-        send_failure("invalid path\n");
+        send_failure("invalid path or permission denied\n");
         return -1;
     }
 }
@@ -37,11 +37,11 @@ int remove(const char* path) {
     free(filename);
 
     if (inode_id == ROOT_INODE_ID) {
-        send_failure("anus sebe udali, pyos\n");
+        send_failure("permission denied\n");
         return -1;
     }
     if (!is_allocated_inode_id(inode_id)) {
-        send_failure("invalid path\n");
+        send_failure("invalid path or permission denied\n");
         return -1;
     }
     if (remove_file_from_dir(parent_inode_id, inode_id) == -1) {
@@ -60,7 +60,7 @@ int create_file(const char* path, enum file_type file_type) {
     char* filename;
     get_parent_and_filename(path, &parent_inode_id, &filename);
     if (parent_inode_id == -1 || !is_dir(parent_inode_id)) {
-        send_failure("incorrect path\n");
+        send_failure("incorrect path or permission denied\n");
         free(filename);
         return -1;
     }
@@ -84,6 +84,7 @@ int create_file(const char* path, enum file_type file_type) {
     inode.created       =
     inode.last_accessed =
     inode.last_modified = time(NULL);
+    inode.user_id       = user_id;
     memset(inode.direct, -1, sizeof(inode.direct));
     int new_inode_id = allocate_inode();
     if (file_type == DIRECTORY) {
@@ -102,7 +103,7 @@ int list_entries(const char* path, int all) {
     int inode_id = (path == NULL ? work_inode_id : traverse(path));
 
     if (!is_dir(inode_id)) {
-        send_failure("not a directory\n");
+        send_failure("not a directory or permission denied\n");
         return -1;
     }
     send_success();
@@ -190,7 +191,7 @@ int copy_from_local(const char* dest_path) {
 int copy_to_local(const char* src_path) {
     int src_inode_id = traverse(src_path);
     if (src_inode_id == -1) {
-        send_failure("invalid path\n");
+        send_failure("invalid path or permission denied\n");
         return -1;
     }
     struct inode src_inode;
@@ -212,7 +213,7 @@ int copy_to_local(const char* src_path) {
 int copy(const char* src_path, const char* dest_path) {
     int src_inode_id = traverse(src_path);
     if (src_inode_id == -1) {
-        send_failure("invalid_path\n");
+        send_failure("invalid_path or permission denied\n");
         return -1;
     }
     struct inode src_inode;
@@ -248,7 +249,7 @@ int copy(const char* src_path, const char* dest_path) {
 int move(const char* src_path, const char* dest_path) {
     int src_inode_id = traverse(src_path);
     if (src_inode_id == -1 || src_inode_id == ROOT_INODE_ID) {
-        send_failure("invalid source path\n");
+        send_failure("invalid source path or permission denied\n");
         return -1;
     }
     if (file_exists(dest_path)) {
@@ -272,7 +273,7 @@ int move(const char* src_path, const char* dest_path) {
         return 0;
     }
     if (dest_parent_inode_id == -1) {
-        send_failure("invalid path\n");
+        send_failure("invalid path or permission denied\n");
         free(src_filename);
         free(dest_filename);
         return -1;
@@ -323,7 +324,7 @@ void print_work_path() {
 int print_contents(const char* path) {
     int inode_id = traverse(path);
     if (inode_id == -1) {
-        send_failure("invalid path\n");
+        send_failure("invalid path or permission denied\n");
         return -1;
     }
     if (!is_regular_file(inode_id)) {

@@ -109,6 +109,12 @@ int init_dir(struct inode* inode, int inode_id, int parent_inode_id) {
     return 0;
 }
 
+int check_user_id(int inode_id) {
+    struct inode inode;
+    read_inode(&inode, inode_id);
+    return (inode.user_id == 0 || inode.user_id == user_id);
+}
+
 int go(int inode_id, const char* filename) {
     if (inode_id == -1) {
         return -1;
@@ -116,6 +122,7 @@ int go(int inode_id, const char* filename) {
 
     struct inode inode;
     read_inode(&inode, inode_id);
+
     char block[MINIFS_BLOCK_SIZE];
 
     for (int i = 0; i < N_DIRECT_PTRS; ++i) {
@@ -125,6 +132,9 @@ int go(int inode_id, const char* filename) {
         read_block(block, inode.direct[i]);
         for (struct entry* entry = (struct entry*)block; (void*)entry < (void*)block + MINIFS_BLOCK_SIZE; ++entry) {
             if (strcmp(entry->filename, filename) == 0) {
+                if (!check_user_id(entry->inode_id)) {
+                    return -1;
+                }
                 return entry->inode_id;
             }
         }
@@ -149,7 +159,6 @@ int traverse_from(int inode_id, char** path) {
             return -1;
         }
         inode_id = go(inode_id, *token);
-
     }
     return inode_id;
 }
