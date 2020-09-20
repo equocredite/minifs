@@ -1,6 +1,8 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
+#include <pthread.h>
+
 #define MAGIC 13371488
 
 enum file_type {
@@ -37,9 +39,11 @@ enum file_type {
 
 int disk_fd;
 // set to 1 when current function was called by another one and should not send success/failure messages
-int disable_succfail;
+extern _Thread_local int disable_succfail;
 extern _Thread_local int client_fd; // returned by accept()
 extern _Thread_local int work_inode_id;
 extern _Thread_local int user_id;
+
+pthread_rwlock_t lock;
 
 #endif // GLOBALS_H

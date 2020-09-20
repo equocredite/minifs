@@ -116,7 +116,7 @@ int check_user_id(int inode_id) {
 }
 
 int go(int inode_id, const char* filename) {
-    if (inode_id == -1) {
+    if (!is_dir(inode_id)) {
         return -1;
     }
 
@@ -131,7 +131,7 @@ int go(int inode_id, const char* filename) {
         }
         read_block(block, inode.direct[i]);
         for (struct entry* entry = (struct entry*)block; (void*)entry < (void*)block + MINIFS_BLOCK_SIZE; ++entry) {
-            if (strcmp(entry->filename, filename) == 0) {
+            if (is_allocated_inode_id(entry->inode_id) && strcmp(entry->filename, filename) == 0) {
                 if (!check_user_id(entry->inode_id)) {
                     return -1;
                 }
@@ -139,7 +139,6 @@ int go(int inode_id, const char* filename) {
             }
         }
     }
-
     return -1;
 }
 
