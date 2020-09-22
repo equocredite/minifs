@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include <pthread.h>
 
+#include "lock.h"
 #include "globals.h"
 #include "interface.h"
 #include "inode.h"
@@ -14,27 +16,27 @@
 #include "net_io.h"
 
 int change_dir(const char* path) {
-    pthread_rwlock_rdlock(&lock);
+    read_lock();
     int dest_inode_id = traverse(path);
     if (is_dir(dest_inode_id)) {
         send_success();
         work_inode_id = dest_inode_id;
 
-        disable_succfail = 1;
+        nested = 1;
         print_work_path();
-        disable_succfail = 0;
+        nested = 0;
 
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return work_inode_id;
     } else {
         send_failure("invalid path or permission denied\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
 }
 
 int remove(const char* path) {
-    pthread_rwlock_wrlock(&lock);
+    write_lock();
     int parent_inode_id;
     char* filename;
     get_parent_and_filename(path, &parent_inode_id, &filename);
@@ -43,29 +45,29 @@ int remove(const char* path) {
 
     if (inode_id == ROOT_INODE_ID) {
         send_failure("permission denied\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     if (!is_allocated_inode_id(inode_id)) {
         send_failure("invalid path or permission denied\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     if (remove_file_from_dir(parent_inode_id, inode_id) == -1) {
         send_failure("no such file\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     send_success();
-    pthread_rwlock_unlock(&lock);
+    unlock();
     return 0;
 }
 
 int create_file(const char* path, enum file_type file_type) {
-    pthread_rwlock_wrlock(&lock);
+    write_lock();
     if (file_exists(path)) {
         send_failure("file already exists\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     int parent_inode_id;
@@ -74,20 +76,20 @@ int create_file(const char* path, enum file_type file_type) {
     if (parent_inode_id == -1 || !is_dir(parent_inode_id)) {
         send_failure("incorrect path or permission denied\n");
         free(filename);
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     if (get_free_space_in_file(parent_inode_id) < sizeof(struct entry)) {
         send_failure("not enough space in directory\n");
         free(filename);
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
                                     // a directory requires a block immediately
     if (get_n_free_inodes() == 0 || (file_type == DIRECTORY && get_n_free_blocks() == 0)) {
         send_failure("not enough space in MiniFS\n");
         free(filename);
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     send_success();
@@ -111,17 +113,17 @@ int create_file(const char* path, enum file_type file_type) {
     add_file_to_dir(parent_inode_id, new_inode_id, filename);
 
     free(filename);
-    pthread_rwlock_unlock(&lock);
+    unlock();
     return new_inode_id;
 }
 
 int list_entries(const char* path, int all) {
-    pthread_rwlock_rdlock(&lock);
+    read_lock();
     int inode_id = (path == NULL ? work_inode_id : traverse(path));
 
     if (!is_dir(inode_id)) {
         send_failure("not a directory or permission denied\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     send_success();
@@ -146,7 +148,7 @@ int list_entries(const char* path, int all) {
         }
     }
 
-    pthread_rwlock_unlock(&lock);
+    unlock();
     return 0;
 }
 
@@ -176,28 +178,28 @@ void display_help() {
 }
 
 int copy_from_local(const char* dest_path) {
-    pthread_rwlock_wrlock(&lock);
+    write_lock();
     send_success(); // sync
     size_t size;
     recv_nbytes(&size, sizeof(size));
     if (size > (int64_t)MAX_FILE_SIZE) {
         send_failure("file too big\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     if (get_n_blocks_needed((int)size) > get_n_free_blocks()) {
         send_failure("not enough free blocks left");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
 
-    disable_succfail = 1;
+    nested = 1;
     int inode_id = create_file(dest_path, REGULAR_FILE);
-    disable_succfail = 0;
+    nested = 0;
 
     if (inode_id == -1) {
         send_failure("couldn't create file");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     send_success();
@@ -208,23 +210,23 @@ int copy_from_local(const char* dest_path) {
         recv_nbytes(buf, n_bytes_cur);
         append_to_file(inode_id, buf, n_bytes_cur);
     }
-    pthread_rwlock_unlock(&lock);
+    unlock();
     return inode_id;
 }
 
 int copy_to_local(const char* src_path) {
-    pthread_rwlock_rdlock(&lock);
+    read_lock();
     int src_inode_id = traverse(src_path);
     if (src_inode_id == -1) {
         send_failure("invalid path or permission denied\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     struct inode src_inode;
     read_inode(&src_inode, src_inode_id);
     if (src_inode.file_type != REGULAR_FILE) {
         send_failure("not a regular file\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     send_success();
@@ -234,38 +236,38 @@ int copy_to_local(const char* src_path) {
         int n_bytes_cur = (n_bytes_left < MINIFS_BLOCK_SIZE ? n_bytes_left : MINIFS_BLOCK_SIZE);
         send_nbytes(buf, n_bytes_cur);
     }
-    pthread_rwlock_unlock(&lock);
+    unlock();
     return 0;
 }
 
 int copy(const char* src_path, const char* dest_path) {
-    pthread_rwlock_wrlock(&lock);
+    write_lock();
     int src_inode_id = traverse(src_path);
     if (src_inode_id == -1) {
         send_failure("invalid_path or permission denied\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     struct inode src_inode;
     read_inode(&src_inode, src_inode_id);
     if (src_inode.file_type != REGULAR_FILE) {
         send_failure("not a regular file\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     if (get_n_blocks_needed(src_inode.size) > get_n_free_blocks()) {
         send_failure("not enough free blocks in MiniFS\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
 
-    disable_succfail = 1;
+    nested = 1;
     int new_inode_id = create_file(dest_path, REGULAR_FILE);
-    disable_succfail = 0;
+    nested = 0;
 
     if (new_inode_id == -1) {
         send_failure("couldn't create file\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     send_success();
@@ -276,21 +278,21 @@ int copy(const char* src_path, const char* dest_path) {
         int n_bytes_cur = (n_bytes_left < MINIFS_BLOCK_SIZE ? n_bytes_left : MINIFS_BLOCK_SIZE);
         append_to_file(new_inode_id, buf, n_bytes_cur);
     }
-    pthread_rwlock_unlock(&lock);
+    unlock();
     return new_inode_id;
 }
 
 int move(const char* src_path, const char* dest_path) {
-    pthread_rwlock_wrlock(&lock);
+    write_lock();
     int src_inode_id = traverse(src_path);
     if (src_inode_id == -1 || src_inode_id == ROOT_INODE_ID) {
         send_failure("invalid source path or permission denied\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     if (file_exists(dest_path)) {
         send_failure("file at destination path already exists\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
 
@@ -307,21 +309,21 @@ int move(const char* src_path, const char* dest_path) {
         free(src_filename);
         free(dest_filename);
         send_success();
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return 0;
     }
     if (dest_parent_inode_id == -1) {
         send_failure("invalid path or permission denied\n");
         free(src_filename);
         free(dest_filename);
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     if (get_free_space_in_file(dest_parent_inode_id) < sizeof(struct entry)) {
         send_failure("not enough space in destination directory\n");
         free(src_filename);
         free(dest_filename);
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     send_success();
@@ -333,16 +335,16 @@ int move(const char* src_path, const char* dest_path) {
     }
     free(src_filename);
     free(dest_filename);
-    pthread_rwlock_unlock(&lock);
+    unlock();
     return 0;
 }
 
 void print_work_path() {
-    pthread_rwlock_rdlock(&lock);
+    read_lock();
     if (work_inode_id == ROOT_INODE_ID) {
         send_success();
         send_msg("/\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return;
     }
     char* buf = calloc(MAX_PATH_LEN, 1);
@@ -362,20 +364,20 @@ void print_work_path() {
     send_msg(buf);
     send_msg("\n");
     free(buf);
-    pthread_rwlock_unlock(&lock);
+    unlock();
 }
 
 int print_contents(const char* path) {
-    pthread_rwlock_rdlock(&lock);
+    read_lock();
     int inode_id = traverse(path);
     if (inode_id == -1) {
         send_failure("invalid path or permission denied\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     if (!is_regular_file(inode_id)) {
         send_failure("not a regular file\n");
-        pthread_rwlock_unlock(&lock);
+        unlock();
         return -1;
     }
     send_success();
@@ -391,6 +393,6 @@ int print_contents(const char* path) {
         int size = min(inode.size - MINIFS_BLOCK_SIZE * i, MINIFS_BLOCK_SIZE);
         send_nbytes(block, size);
     }
-    pthread_rwlock_unlock(&lock);
+    unlock();
     return 0;
 }

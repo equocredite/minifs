@@ -8,7 +8,12 @@
 #include <linux/syscalls.h>
 #include <linux/string.h>
 
-#include "../include/globals.h"
+#define MINIFS_BLOCK_SIZE 1024
+#define N_BLOCKS   128
+#define N_INODES   128
+#define MINIFS_INODE_SIZE 128
+#define DISK_SIZE (MINIFS_BLOCK_SIZE * 3 + N_INODES * MINIFS_INODE_SIZE + MINIFS_BLOCK_SIZE * N_BLOCKS)
+
 
 static int minifs_open(struct inode* inode, struct file* file);
 static ssize_t minifs_read(struct file* file, char __user* user, size_t count, loff_t* offset);

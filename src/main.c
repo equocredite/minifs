@@ -33,12 +33,10 @@
 #include "net_io.h"
 
 int disk_fd;
-_Thread_local int disable_succfail;
+_Thread_local int nested;
 _Thread_local int client_fd;
 _Thread_local int work_inode_id;
 _Thread_local int user_id;
-
-pthread_rwlock_t lock = PTHREAD_RWLOCK_INITIALIZER;
 
 FILE* log_fp;
 
@@ -130,7 +128,7 @@ void* process_client(void* new_client_fd) {
     client_fd = *((int*)(new_client_fd));
     free((int*)new_client_fd);
     work_inode_id = ROOT_INODE_ID;
-    disable_succfail = 0;
+    nested = 0;
 
     char buf[1024];
     // log in
@@ -139,6 +137,7 @@ void* process_client(void* new_client_fd) {
     send_success();
 
     while (recv_msg(buf) > 0) {
+        printf("got msg: %s\n", buf);
         char** tokens = split_str(buf, " ");
 
         if (strcmp(tokens[0], "exit") == 0) {

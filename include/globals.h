@@ -38,8 +38,10 @@ enum file_type {
 #define MAX_FILE_SIZE (N_DIRECT_PTRS * MINIFS_BLOCK_SIZE) // one actual data block for each direct pointer
 
 int disk_fd;
-// set to 1 when current function was called by another one and should not send success/failure messages
-extern _Thread_local int disable_succfail;
+// set to 1 when current "upper level" function was called by another one
+// if 1, success/failure messages over the net are disabled, and locks are not taken
+// yes, it's a crutch
+extern _Thread_local int nested;
 extern _Thread_local int client_fd; // returned by accept()
 extern _Thread_local int work_inode_id;
 extern _Thread_local int user_id;

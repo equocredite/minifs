@@ -14,14 +14,14 @@ void send_msg(const char* buf) {
 }
 
 void send_success() {
-    if (disable_succfail) {
+    if (nested) {
         return;
     }
     send_msg("1");
 }
 
 void send_failure(const char* msg) {
-    if (disable_succfail) {
+    if (nested) {
         return;
     }
     send_msg("0");
